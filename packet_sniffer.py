@@ -207,7 +207,7 @@ def print_packet_header(pkt_num, proto_name, src_ip, dst_ip, timestamp):
     print(f"\n{color}{Colors.BOLD}[#{pkt_num:04d}] [{timestamp}] ◀─── {proto_name} ───▶{Colors.RESET}")
     print(f"  {Colors.YELLOW}SRC:{Colors.RESET} {src_ip:<18} {Colors.YELLOW}DST:{Colors.RESET} {dst_ip}")
 
-def display_tcp(src_port, dst_port, seq, ack, flags, payload, show_payload=False)
+def display_tcp(src_port, dst_port, seq, ack, flags, payload, show_payload=False):
     src_svc = f" ({get_port_service(src_port)})" if get_port_service(src_port) else ""
     dst_svc = f" ({get_port_service(dst_port)})" if get_port_service(dst_port) else ""
     print(f"  {Colors.GREEN}SRC Port:{Colors.RESET} {src_port}{src_svc}  "
@@ -223,7 +223,7 @@ def display_tcp(src_port, dst_port, seq, ack, flags, payload, show_payload=False
         except:
             pass
 
-def display_udp(src_port, dst_port, size, payload, show_payload=False)
+def display_udp(src_port, dst_port, size, payload, show_payload=False):
     src_svc = f" ({get_port_service(src_port)})" if get_port_service(src_port) else ""
     dst_svc = f" ({get_port_service(dst_port)})" if get_port_service(dst_port) else ""
     print(f"  {Colors.CYAN}SRC Port:{Colors.RESET} {src_port}{src_svc}  "
