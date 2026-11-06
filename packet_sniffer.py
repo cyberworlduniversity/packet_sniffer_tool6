@@ -107,13 +107,10 @@ def parse_ethernet(raw_data):
     Parse Ethernet II frame.
     Structure: [DST MAC 6B][SRC MAC 6B][EtherType 2B][Payload]
     """
-    dest_mac, src_mac, eth_proto = struct.unpack('! 6s 6s H', raw_data[:14])
-    return (
-        format_mac(dest_mac),
-        format_mac(src_mac),
-        socket.htons(eth_proto),
-        raw_data[14:]
-    )
+    if len(raw_data) < 14:
+        raise ValueError("Truncated Ethernet frame.")
+    dest_mac, src_mac, eth_proto = struct.unpack("!6s6sH", raw_data[:14])
+    return format_mac(dest_mac), format_mac(src_mac), eth_proto, raw_data[14:]
 
 # ─── IPv4 Packet Parser ───────────────────────────────────────────────────────
 def parse_ipv4(raw_data):
@@ -122,19 +119,15 @@ def parse_ipv4(raw_data):
     Fields: Version, IHL, ToS, Total Length, ID, Flags, TTL, Protocol,
             Checksum, Src IP, Dst IP
     """
+    if len(raw_data) < 20:
+        raise ValueError("Truncated IPv4 header.")
     version_ihl = raw_data[0]
-    version     = version_ihl >> 4
-    ihl         = (version_ihl & 0xF) * 4   # header length in bytes
-    ttl, proto, src, dst = struct.unpack('! 8x B B 2x 4s 4s', raw_data[:20])
-    return (
-        version,
-        ihl,
-        ttl,
-        proto,
-        format_ip(src),
-        format_ip(dst),
-        raw_data[ihl:]
-    )
+    version = version_ihl >> 4
+    ihl = (version_ihl & 0x0F) * 4
+    if version != 4 or ihl < 20 or ihl > len(raw_data):
+        raise ValueError("Invalid IPv4 version or header length.")
+    ttl, proto, src, dst = struct.unpack("!8xBB2x4s4s", raw_data[:20])
+    return version, ihl, ttl, proto, format_ip(src), format_ip(dst), raw_data[ihl:]
 
 # ─── ICMP Packet Parser ───────────────────────────────────────────────────────
 def parse_icmp(raw_data):
@@ -142,7 +135,9 @@ def parse_icmp(raw_data):
     Parse ICMP header.
     Type 0 = Echo Reply, Type 8 = Echo Request
     """
-    icmp_type, code, checksum = struct.unpack('! B B H', raw_data[:4])
+    if len(raw_data) < 4:
+        raise ValueError("Truncated ICMP header.")
+    icmp_type, code, checksum = struct.unpack("!BBH", raw_data[:4])
     return icmp_type, code, checksum, raw_data[4:]
 
 ICMP_TYPES = {
@@ -156,11 +151,13 @@ def parse_tcp(raw_data):
     Parse TCP segment header.
     Extracts ports, sequence numbers, flags, and payload.
     """
-    (src_port, dst_port, seq, ack, offset_flags) = struct.unpack(
-        '! H H L L H', raw_data[:14]
-    )
-    offset = (offset_flags >> 12) * 4   # data offset
-    flags  = offset_flags & 0x1FF
+    if len(raw_data) < 20:
+        raise ValueError("Truncated TCP header.")
+    src_port, dst_port, seq, ack, offset_flags = struct.unpack("!HHIIH", raw_data[:14])
+    offset = (offset_flags >> 12) * 4
+    if offset < 20 or offset > len(raw_data):
+        raise ValueError("Invalid TCP data offset.")
+    flags = offset_flags & 0x1FF
 
     flag_str = ""
     if flags & 0x002: flag_str += "SYN "
@@ -178,8 +175,12 @@ def parse_udp(raw_data):
     Parse UDP datagram header.
     Simple: source port, dest port, length, checksum.
     """
-    src_port, dst_port, size = struct.unpack('! H H 2x H', raw_data[:8])
-    return src_port, dst_port, size, raw_data[8:]
+    if len(raw_data) < 8:
+        raise ValueError("Truncated UDP header.")
+    src_port, dst_port, size = struct.unpack("!HH2xH", raw_data[:8])
+    if size < 8:
+        raise ValueError("Invalid UDP length.")
+    return src_port, dst_port, size, raw_data[8:min(size, len(raw_data))]
 
 # ─── Display Functions ────────────────────────────────────────────────────────
 def print_banner():
@@ -206,7 +207,7 @@ def print_packet_header(pkt_num, proto_name, src_ip, dst_ip, timestamp):
     print(f"\n{color}{Colors.BOLD}[#{pkt_num:04d}] [{timestamp}] ◀─── {proto_name} ───▶{Colors.RESET}")
     print(f"  {Colors.YELLOW}SRC:{Colors.RESET} {src_ip:<18} {Colors.YELLOW}DST:{Colors.RESET} {dst_ip}")
 
-def display_tcp(src_port, dst_port, seq, ack, flags, payload):
+def display_tcp(src_port, dst_port, seq, ack, flags, payload, show_payload=False):
     src_svc = f" ({get_port_service(src_port)})" if get_port_service(src_port) else ""
     dst_svc = f" ({get_port_service(dst_port)})" if get_port_service(dst_port) else ""
     print(f"  {Colors.GREEN}SRC Port:{Colors.RESET} {src_port}{src_svc}  "
@@ -214,7 +215,7 @@ def display_tcp(src_port, dst_port, seq, ack, flags, payload):
     print(f"  {Colors.GREEN}SEQ:{Colors.RESET} {seq}  "
           f"{Colors.GREEN}ACK:{Colors.RESET} {ack}  "
           f"{Colors.GREEN}Flags:{Colors.RESET} [{flags}]")
-    if payload:
+    if payload and show_payload:
         preview = payload[:60]
         try:
             txt = preview.decode('utf-8', errors='replace').replace('\n','↵').replace('\r','')
@@ -222,12 +223,17 @@ def display_tcp(src_port, dst_port, seq, ack, flags, payload):
         except:
             pass
 
-def display_udp(src_port, dst_port, size, payload):
+def display_udp(src_port, dst_port, size, payload, show_payload=False):
     src_svc = f" ({get_port_service(src_port)})" if get_port_service(src_port) else ""
     dst_svc = f" ({get_port_service(dst_port)})" if get_port_service(dst_port) else ""
     print(f"  {Colors.CYAN}SRC Port:{Colors.RESET} {src_port}{src_svc}  "
           f"{Colors.CYAN}DST Port:{Colors.RESET} {dst_port}{dst_svc}  "
           f"{Colors.CYAN}Size:{Colors.RESET} {size}B")
+    if payload and show_payload:
+        preview = payload[:60]
+        text = preview.decode("utf-8", errors="replace").replace("\\n", "↵").replace("\\r", "")
+        print(f"  {Colors.DIM}Data: {text[:60]}{'...' if len(payload) > 60 else ''}{Colors.RESET}")
+
 
 def display_icmp(icmp_type, code, checksum):
     type_name = ICMP_TYPES.get(icmp_type, f"Type {icmp_type}")
@@ -252,7 +258,7 @@ def display_stats():
     print(Colors.RESET)
 
 # ─── Core Sniffer Logic ───────────────────────────────────────────────────────
-def sniff(interface=None, packet_limit=0, filter_protocol=None, verbose=False):
+def sniff(interface=None, packet_limit=0, filter_protocol=None, verbose=False, show_payload=False):
     """
     Main sniffing loop.
 
@@ -261,10 +267,16 @@ def sniff(interface=None, packet_limit=0, filter_protocol=None, verbose=False):
         packet_limit   – Stop after N packets (0 = unlimited)
         filter_protocol– Only show 'TCP', 'UDP', 'ICMP', or None for all
         verbose        – Show Ethernet layer details
+        show_payload   – Explicitly opt in to a short TCP/UDP payload preview
     """
+    if packet_limit < 0:
+        raise ValueError("Packet count must be zero (unlimited) or a positive integer.")
+    if filter_protocol and filter_protocol.upper() not in {"TCP", "UDP", "ICMP"}:
+        raise ValueError("Protocol filter must be TCP, UDP, or ICMP.")
+
     try:
         # AF_PACKET captures raw Ethernet frames (Linux only)
-        conn = socket.socket(socket.AF_PACKET, socket.SOCK_RAW, socket.ntohs(3))
+        conn = socket.socket(socket.AF_PACKET, socket.SOCK_RAW, socket.htons(3))
         if interface:
             conn.bind((interface, 0))
     except PermissionError:
@@ -288,13 +300,13 @@ def sniff(interface=None, packet_limit=0, filter_protocol=None, verbose=False):
             now = datetime.datetime.now().strftime("%H:%M:%S.%f")[:-3]
 
             # ── Layer 2: Ethernet ──
-            dest_mac, src_mac, eth_proto, eth_payload = parse_ethernet(raw_data)
-
-            # ── Layer 3: IPv4 only ──
-            if eth_proto != 8:   # 8 = IPv4 EtherType
+            try:
+                dest_mac, src_mac, eth_proto, eth_payload = parse_ethernet(raw_data)
+                if eth_proto != 0x0800:
+                    continue
+                version, ihl, ttl, proto_num, src_ip, dst_ip, ip_payload = parse_ipv4(eth_payload)
+            except (ValueError, struct.error):
                 continue
-
-            version, ihl, ttl, proto_num, src_ip, dst_ip, ip_payload = parse_ipv4(eth_payload)
             proto_name = get_protocol_name(proto_num)
 
             # Apply protocol filter
@@ -309,18 +321,19 @@ def sniff(interface=None, packet_limit=0, filter_protocol=None, verbose=False):
                 print(f"  {Colors.DIM}ETH  SRC:{src_mac} → DST:{dest_mac}{Colors.RESET}")
                 print(f"  {Colors.DIM}IPv4 TTL:{ttl}  Version:{version}{Colors.RESET}")
 
-            # ── Layer 4 ──
-            if proto_num == 6:      # TCP
-                sp, dp, seq, ack, flags, payload = parse_tcp(ip_payload)
-                display_tcp(sp, dp, seq, ack, flags, payload)
-
-            elif proto_num == 17:   # UDP
-                sp, dp, size, payload = parse_udp(ip_payload)
-                display_udp(sp, dp, size, payload)
-
-            elif proto_num == 1:    # ICMP
-                icmp_type, code, checksum, _ = parse_icmp(ip_payload)
-                display_icmp(icmp_type, code, checksum)
+            # Layer 4 parsing is untrusted input; skip truncated/malformed transport headers.
+            try:
+                if proto_num == 6:      # TCP
+                    sp, dp, seq, ack, flags, payload = parse_tcp(ip_payload)
+                    display_tcp(sp, dp, seq, ack, flags, payload, show_payload=show_payload)
+                elif proto_num == 17:   # UDP
+                    sp, dp, size, payload = parse_udp(ip_payload)
+                    display_udp(sp, dp, size, payload, show_payload=show_payload)
+                elif proto_num == 1:    # ICMP
+                    icmp_type, code, checksum, _ = parse_icmp(ip_payload)
+                    display_icmp(icmp_type, code, checksum)
+            except (ValueError, struct.error):
+                continue
 
             print_separator()
 
@@ -417,9 +430,11 @@ Examples:
         """
     )
     parser.add_argument('-i', '--interface', help='Network interface (e.g. eth0, wlan0)')
-    parser.add_argument('-f', '--filter',    help='Protocol filter: TCP | UDP | ICMP')
+    parser.add_argument('-f', '--filter', choices=['TCP', 'UDP', 'ICMP'], help='Protocol filter: TCP | UDP | ICMP')
     parser.add_argument('-n', '--count',     type=int, default=0, help='Number of packets to capture')
-    parser.add_argument('-v', '--verbose',   action='store_true',  help='Show Ethernet layer details')
+    parser.add_argument('-v', '--verbose', action='store_true', help='Show Ethernet layer details')
+    parser.add_argument('--show-payload', action='store_true',
+                        help='Opt in to displaying up to 60 bytes of TCP/UDP payload (may contain secrets)')
     parser.add_argument('--demo',            action='store_true',  help='Run in demo/simulation mode')
 
     args = parser.parse_args()
@@ -431,5 +446,6 @@ Examples:
             interface       = args.interface,
             packet_limit    = args.count,
             filter_protocol = args.filter,
-            verbose         = args.verbose
+            verbose         = args.verbose,
+            show_payload    = args.show_payload
         )

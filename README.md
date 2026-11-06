@@ -449,3 +449,14 @@ flowchart TD
     G --> H[Exit]
     D --> H
 ```
+
+
+## Payload privacy default
+
+Packet payloads are hidden by default because captured application data can contain passwords, tokens, messages, and other private information. The scanner displays packet metadata only unless you explicitly opt in:
+
+```bash
+sudo python3 packet_sniffer.py --show-payload
+```
+
+Use payload display only on networks and traffic you are authorized to inspect. The preview is limited to 60 bytes per TCP/UDP packet.
