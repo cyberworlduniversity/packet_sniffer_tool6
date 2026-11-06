@@ -1,10 +1,19 @@
 # 📦 Packet Sniffer — Cybersecurity Tool #6
 
+
+## Get this repository
+
+Clone the current project (this repository's canonical GitHub URL), then follow the installation and usage steps below.
+
+```bash
+git clone https://github.com/cyberworlduniversity/packet_sniffer_tool6.git
+cd packet_sniffer_tool6
+```
+
 > **Definition:** A Packet Sniffer captures and analyzes network packets flowing through a network interface, displaying source IP, destination IP, protocol, ports, flags, and payload data in real time.
 
 ---
-
-## 📚 Table of Contents
+\n## 📚 Table of Contents
 
 1. [What is a Packet Sniffer?](#what-is-a-packet-sniffer)
 2. [How the Program Works — Full Flow](#how-the-program-works--full-flow)
@@ -284,8 +293,8 @@ Client                    Server
 ### Quick Start
 ```bash
 # Clone or download the files
-git clone https://github.com/yourname/packet-sniffer
-cd packet-sniffer
+git clone https://github.com/cyberworlduniversity/packet_sniffer_tool6.git
+cd packet_sniffer_tool6
 
 # Run demo mode (no root needed)
 python3 packet_sniffer.py --demo
