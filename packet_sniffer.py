@@ -107,11 +107,13 @@ def parse_ethernet(raw_data):
     Parse Ethernet II frame.
     Structure: [DST MAC 6B][SRC MAC 6B][EtherType 2B][Payload]
     """
+    if len(raw_data) < 14:
+        raise ValueError("Ethernet frame must contain at least 14 bytes")
     dest_mac, src_mac, eth_proto = struct.unpack('! 6s 6s H', raw_data[:14])
     return (
         format_mac(dest_mac),
         format_mac(src_mac),
-        socket.htons(eth_proto),
+        eth_proto,
         raw_data[14:]
     )
 
@@ -122,9 +124,13 @@ def parse_ipv4(raw_data):
     Fields: Version, IHL, ToS, Total Length, ID, Flags, TTL, Protocol,
             Checksum, Src IP, Dst IP
     """
+    if len(raw_data) < 20:
+        raise ValueError("IPv4 packet must contain at least 20 bytes")
     version_ihl = raw_data[0]
     version     = version_ihl >> 4
     ihl         = (version_ihl & 0xF) * 4   # header length in bytes
+    if version != 4 or ihl < 20 or ihl > len(raw_data):
+        raise ValueError("Invalid IPv4 version or header length")
     ttl, proto, src, dst = struct.unpack('! 8x B B 2x 4s 4s', raw_data[:20])
     return (
         version,
@@ -142,6 +148,8 @@ def parse_icmp(raw_data):
     Parse ICMP header.
     Type 0 = Echo Reply, Type 8 = Echo Request
     """
+    if len(raw_data) < 4:
+        raise ValueError("ICMP message must contain at least 4 bytes")
     icmp_type, code, checksum = struct.unpack('! B B H', raw_data[:4])
     return icmp_type, code, checksum, raw_data[4:]
 
@@ -156,10 +164,14 @@ def parse_tcp(raw_data):
     Parse TCP segment header.
     Extracts ports, sequence numbers, flags, and payload.
     """
+    if len(raw_data) < 20:
+        raise ValueError("TCP segment must contain at least 20 bytes")
     (src_port, dst_port, seq, ack, offset_flags) = struct.unpack(
         '! H H L L H', raw_data[:14]
     )
     offset = (offset_flags >> 12) * 4   # data offset
+    if offset < 20 or offset > len(raw_data):
+        raise ValueError("Invalid TCP data offset")
     flags  = offset_flags & 0x1FF
 
     flag_str = ""
@@ -178,8 +190,12 @@ def parse_udp(raw_data):
     Parse UDP datagram header.
     Simple: source port, dest port, length, checksum.
     """
+    if len(raw_data) < 8:
+        raise ValueError("UDP datagram must contain at least 8 bytes")
     src_port, dst_port, size = struct.unpack('! H H 2x H', raw_data[:8])
-    return src_port, dst_port, size, raw_data[8:]
+    if size < 8 or size > len(raw_data):
+        raise ValueError("Invalid UDP length")
+    return src_port, dst_port, size, raw_data[8:size]
 
 # ─── Display Functions ────────────────────────────────────────────────────────
 def print_banner():
@@ -291,7 +307,7 @@ def sniff(interface=None, packet_limit=0, filter_protocol=None, verbose=False):
             dest_mac, src_mac, eth_proto, eth_payload = parse_ethernet(raw_data)
 
             # ── Layer 3: IPv4 only ──
-            if eth_proto != 8:   # 8 = IPv4 EtherType
+            if eth_proto != 0x0800:   # IPv4 EtherType (network byte order)
                 continue
 
             version, ihl, ttl, proto_num, src_ip, dst_ip, ip_payload = parse_ipv4(eth_payload)
@@ -417,12 +433,14 @@ Examples:
         """
     )
     parser.add_argument('-i', '--interface', help='Network interface (e.g. eth0, wlan0)')
-    parser.add_argument('-f', '--filter',    help='Protocol filter: TCP | UDP | ICMP')
+    parser.add_argument('-f', '--filter', choices=['TCP', 'UDP', 'ICMP'], help='Protocol filter: TCP | UDP | ICMP')
     parser.add_argument('-n', '--count',     type=int, default=0, help='Number of packets to capture')
     parser.add_argument('-v', '--verbose',   action='store_true',  help='Show Ethernet layer details')
     parser.add_argument('--demo',            action='store_true',  help='Run in demo/simulation mode')
 
     args = parser.parse_args()
+    if args.count < 0:
+        parser.error('--count must be zero or a positive integer')
 
     if args.demo:
         run_demo()
