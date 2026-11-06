@@ -13,7 +13,8 @@ cd packet_sniffer_tool6
 > **Definition:** A Packet Sniffer captures and analyzes network packets flowing through a network interface, displaying source IP, destination IP, protocol, ports, flags, and payload data in real time.
 
 ---
-\n## 📚 Table of Contents
+
+## 📚 Table of Contents
 
 1. [What is a Packet Sniffer?](#what-is-a-packet-sniffer)
 2. [How the Program Works — Full Flow](#how-the-program-works--full-flow)
