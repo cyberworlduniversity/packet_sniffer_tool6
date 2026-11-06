@@ -229,6 +229,11 @@ def display_udp(src_port, dst_port, size, payload, show_payload=False):
     print(f"  {Colors.CYAN}SRC Port:{Colors.RESET} {src_port}{src_svc}  "
           f"{Colors.CYAN}DST Port:{Colors.RESET} {dst_port}{dst_svc}  "
           f"{Colors.CYAN}Size:{Colors.RESET} {size}B")
+    if payload and show_payload:
+        preview = payload[:60]
+        text = preview.decode("utf-8", errors="replace").replace("\\n", "↵").replace("\\r", "")
+        print(f"  {Colors.DIM}Data: {text[:60]}{'...' if len(payload) > 60 else ''}{Colors.RESET}")
+
 
 def display_icmp(icmp_type, code, checksum):
     type_name = ICMP_TYPES.get(icmp_type, f"Type {icmp_type}")
@@ -262,6 +267,7 @@ def sniff(interface=None, packet_limit=0, filter_protocol=None, verbose=False, s
         packet_limit   – Stop after N packets (0 = unlimited)
         filter_protocol– Only show 'TCP', 'UDP', 'ICMP', or None for all
         verbose        – Show Ethernet layer details
+        show_payload   – Explicitly opt in to a short TCP/UDP payload preview
     """
     if packet_limit < 0:
         raise ValueError("Packet count must be zero (unlimited) or a positive integer.")
@@ -270,7 +276,7 @@ def sniff(interface=None, packet_limit=0, filter_protocol=None, verbose=False, s
 
     try:
         # AF_PACKET captures raw Ethernet frames (Linux only)
-        conn = socket.socket(socket.AF_PACKET, socket.SOCK_RAW, socket.ntohs(3))
+        conn = socket.socket(socket.AF_PACKET, socket.SOCK_RAW, socket.htons(3))
         if interface:
             conn.bind((interface, 0))
     except PermissionError:
@@ -315,18 +321,19 @@ def sniff(interface=None, packet_limit=0, filter_protocol=None, verbose=False, s
                 print(f"  {Colors.DIM}ETH  SRC:{src_mac} → DST:{dest_mac}{Colors.RESET}")
                 print(f"  {Colors.DIM}IPv4 TTL:{ttl}  Version:{version}{Colors.RESET}")
 
-            # ── Layer 4 ──
-            if proto_num == 6:      # TCP
-                sp, dp, seq, ack, flags, payload = parse_tcp(ip_payload)
-                display_tcp(sp, dp, seq, ack, flags, payload, show_payload=show_payload)
-
-            elif proto_num == 17:   # UDP
-                sp, dp, size, payload = parse_udp(ip_payload)
-                display_udp(sp, dp, size, payload, show_payload=show_payload)
-
-            elif proto_num == 1:    # ICMP
-                icmp_type, code, checksum, _ = parse_icmp(ip_payload)
-                display_icmp(icmp_type, code, checksum)
+            # Layer 4 parsing is untrusted input; skip truncated/malformed transport headers.
+            try:
+                if proto_num == 6:      # TCP
+                    sp, dp, seq, ack, flags, payload = parse_tcp(ip_payload)
+                    display_tcp(sp, dp, seq, ack, flags, payload, show_payload=show_payload)
+                elif proto_num == 17:   # UDP
+                    sp, dp, size, payload = parse_udp(ip_payload)
+                    display_udp(sp, dp, size, payload, show_payload=show_payload)
+                elif proto_num == 1:    # ICMP
+                    icmp_type, code, checksum, _ = parse_icmp(ip_payload)
+                    display_icmp(icmp_type, code, checksum)
+            except (ValueError, struct.error):
+                continue
 
             print_separator()
 
@@ -423,7 +430,7 @@ Examples:
         """
     )
     parser.add_argument('-i', '--interface', help='Network interface (e.g. eth0, wlan0)')
-    parser.add_argument('-f', '--filter',    help='Protocol filter: TCP | UDP | ICMP')
+    parser.add_argument('-f', '--filter', choices=['TCP', 'UDP', 'ICMP'], help='Protocol filter: TCP | UDP | ICMP')
     parser.add_argument('-n', '--count',     type=int, default=0, help='Number of packets to capture')
     parser.add_argument('-v', '--verbose', action='store_true', help='Show Ethernet layer details')
     parser.add_argument('--show-payload', action='store_true',
