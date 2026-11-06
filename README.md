@@ -397,3 +397,55 @@ packet_sniffer/
 
 *Part of the Cybersecurity Learning Series — Tool #6 of 10*
 *Built with Python standard library — zero external dependencies for live capture*
+
+
+## Repository Quick Start
+
+Clone this repository and enter its directory:
+
+```bash
+git clone https://github.com/cyberworlduniversity/packet_sniffer_tool6.git
+cd packet_sniffer_tool6
+```
+
+### Requirements and installation
+
+- Python 3.10+ is recommended.
+- Create an isolated environment and install the pinned project dependencies:
+
+```bash
+python -m venv .venv
+# Linux/macOS: source .venv/bin/activate
+# Windows PowerShell: .venv\\Scripts\\Activate.ps1
+python -m pip install -r requirements.txt
+```
+
+### Run
+
+```bash
+python packet_sniffer.py
+```
+
+If the program presents command-line options, run `python packet_sniffer.py --help` to view the options supported by the current version. Use a test target or sample input first.
+
+### Validate the source
+
+```bash
+python -m compileall -q .
+```
+
+Packet capture may require administrator/root privileges and must be limited to authorized networks.
+
+### Program flow
+
+```mermaid
+flowchart TD
+    A[Start] --> B[Load configuration and input]
+    B --> C{Input valid?}
+    C -- No --> D[Show usage or validation error]
+    C -- Yes --> E[Run packet sniffer tool6 analysis]
+    E --> F[Collect findings]
+    F --> G[Display or save results]
+    G --> H[Exit]
+    D --> H
+```
